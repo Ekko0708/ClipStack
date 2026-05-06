@@ -1,0 +1,48 @@
+# ClipStack
+
+macOS 菜单栏剪贴板历史工具：记录最近复制的内容（文本、图片、文件等），通过快捷键呼出浮窗，按分类浏览、搜索、收藏，并一键粘贴回当前应用。
+
+<img src="演示图.png" alt="ClipStack 界面演示" width="250" />
+
+## 功能概览
+
+- **剪贴板监控**：自动记录最近条目（默认最多 80 条），支持文本、图片、视频文件、其他文件等分类
+- **浮窗**：快捷键唤出（默认 **⌥ 空格**，可在菜单「设置」中调整相关行为）
+- **分类与搜索**：全部 / 文本 / 图片 / 视频 / 文件 / 收藏；支持关键词筛选；打开浮窗会重置搜索；搜索框聚焦时 **Tab** 可退出搜索框，恢复 ←→ 切换分类
+- **收藏**：可固定常用条目（持久化到本机）
+- **粘贴**：选中条目后回车，会尝试将内容写回系统剪贴板并模拟粘贴（需 **辅助功能** 权限以稳定粘贴）
+
+## 系统要求
+
+- **macOS 13 Ventura** 或更高版本（SwiftUI `MenuBarExtra` 依赖）
+- Apple Silicon 或 Intel（需自行用对应架构或通用二进制构建；默认在 Apple Silicon 上构建为 `arm64`）
+
+
+## 安装
+
+1. 打开 `.dmg`，将 **ClipStack** 拖入 **应用程序**
+2. 首次若出现 **「已损坏，无法打开」** 或 Gatekeeper 拦截（未使用 Apple Developer ID + 公证时较常见）：
+   - 在终端执行：  
+     `xattr -cr "/Applications/ClipStack.app"`
+   - 再在 **应用程序** 中对 **ClipStack** **右键 → 打开 → 仍要打开**  
+   - 或在 **系统设置 → 隐私与安全性** 中按提示允许
+3. 在 **隐私与安全性 → 辅助功能** 中为 ClipStack 授权，以便粘贴快捷键生效
+
+> **异常提示原因**:由于未进行苹果官方有效开发者签名 + 公证,所以只能另辟蹊径
+
+## 从源码构建
+
+需要安装 **Xcode 或 Xcode Command Line Tools**（含 Swift）。
+
+```bash
+git clone <你的仓库地址>.git
+cd ClipStack
+./build_app.sh          # 产物：build/ClipStack.app
+./package_dmg.sh       # 可选，生成 dist/ClipStack-*-b*.dmg
+```
+
+说明：
+
+- `build_app.sh` 会生成图标、`swift build -c release`、组装 `.app`，并对 `.app` 做 **ad-hoc 签名**（`codesign --sign -`），便于本地与分发时减少误报
+- DMG 背景与窗口布局由 `package_dmg.sh` 与 `Resources/dmg_background.png` 等资源完成（打包时需在图形环境下执行以便 Finder 写入布局）
+如有问题可在 Issues 中反馈
