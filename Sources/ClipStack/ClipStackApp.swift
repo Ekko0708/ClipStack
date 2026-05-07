@@ -58,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var trustPollCount = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        DebugLog.sessionStart("ClipStack launch pid=\(ProcessInfo.processInfo.processIdentifier) trusted=\(AccessibilityPrompt.isTrusted) macOS=\(ProcessInfo.processInfo.operatingSystemVersionString)")
         NSApp.setActivationPolicy(.accessory)
         _ = AccessibilityPrompt.requestTrustPrompt()
 

@@ -45,4 +45,18 @@ cd ClipStack
 
 - `build_app.sh` 会生成图标、`swift build -c release`、组装 `.app`，并对 `.app` 做 **ad-hoc 签名**（`codesign --sign -`），便于本地与分发时减少误报
 - DMG 背景与窗口布局由 `package_dmg.sh` 与 `Resources/dmg_background.png` 等资源完成（打包时需在图形环境下执行以便 Finder 写入布局）
+
+## 常见问题
+
+### 选定条目后只是写到剪贴板、没有自动粘贴
+
+绝大多数情况是「**辅助功能权限失效**」：
+- 重建 / 升级 / 重新 ad-hoc 签名后，macOS 会让原来给 ClipStack 的「辅助功能」授权失效（即使开关看起来还在「打开」）。没有这个权限，`CGEvent` 发出去的合成 ⌘V 会被系统直接丢弃。
+- 修复方法：**系统设置 → 隐私与安全性 → 辅助功能**，把 ClipStack 先「移除」（点 `−`）再重新「添加」（点 `+` 选回新的 `.app`），打开开关后**完整退出再重启** ClipStack（菜单栏 → 退出，然后重新 `open .app`）。TCC 权限是进程启动时读取的，运行中切换不会立刻生效。
+- 排查：诊断日志在 `~/Library/Logs/ClipStack/runtime.log`，启动时会写一行 `[BOOT] ... trusted=true/false ...`；如果是 `false`，就是上面的权限问题。
+
+### 浮窗里点了一下没反应
+
+单击只会**选中高亮**。要触发粘贴：**按回车 Enter** 或**双击**条目。
+
 如有问题可在 Issues 中反馈

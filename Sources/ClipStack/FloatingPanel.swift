@@ -135,7 +135,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         positionNearCursor()
         panel.alphaValue = 1
         panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        Self.activateSelf()
 
         scheduleOutsideClickMonitor()
 
@@ -157,15 +157,120 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             PasteUtils.simulateCommandV()
             return
         }
-        if let target {
-            target.activate()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+
+        guard let target else {
+            // 没捕获到上一个 App：先让出激活态，等前台不再是自己再发。
+            NSApp.deactivate()
+            Self.waitForFrontmostChange(awayFrom: NSRunningApplication.current, timeout: 0.5) {
                 PasteUtils.simulateCommandV()
+            }
+            return
+        }
+
+        Self.handOffActivation(to: target)
+        Self.waitForFrontmostChange(
+            awayFrom: NSRunningApplication.current,
+            untilMatches: target,
+            timeout: 0.7
+        ) {
+            // 兜底：超时还没切回去，AppleScript 强制激活再发一次。
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier != target.processIdentifier {
+                DebugLog.t("paste", "fallback AppleScript activate \(target.bundleIdentifier ?? "?")")
+                Self.appleScriptActivate(target)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                    PasteUtils.simulateCommandV()
+                }
+            } else {
+                PasteUtils.simulateCommandV()
+            }
+        }
+    }
+
+    private static func activateSelf() {
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// 把激活态显式从 ClipStack 移交到 `target`：
+    /// - macOS 14+ 优先用协作激活专用的 `activate(from:options:)`；
+    /// - 老系统用经典的 `[.activateIgnoringOtherApps]`，并在前面 `deactivate()` 让位。
+    private static func handOffActivation(to target: NSRunningApplication) {
+        if #available(macOS 14.0, *) {
+            let ok = target.activate(from: NSRunningApplication.current, options: [])
+            if !ok {
+                NSApp.deactivate()
+                _ = target.activate(options: [.activateIgnoringOtherApps])
             }
         } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                PasteUtils.simulateCommandV()
+            NSApp.deactivate()
+            target.activate(options: [.activateIgnoringOtherApps])
+        }
+    }
+
+    /// 全屏 / Stage Manager / 某些 Electron App 下，
+    /// 仅靠 `NSRunningApplication.activate` 抢不回前台时的兜底。
+    private static func appleScriptActivate(_ target: NSRunningApplication) {
+        guard let bid = target.bundleIdentifier, !bid.isEmpty else { return }
+        let src = "tell application id \"\(bid)\" to activate"
+        if let script = NSAppleScript(source: src) {
+            var err: NSDictionary?
+            script.executeAndReturnError(&err)
+            if let err {
+                NSLog("[ClipStack] appleScriptActivate failed: \(err)")
             }
+        }
+    }
+
+    /// 轮询 frontmost：直到目标 App 成为 frontmost（或离开 `awayFrom` App）再回调；超时也兜底一次。
+    private static func waitForFrontmostChange(
+        awayFrom: NSRunningApplication?,
+        untilMatches target: NSRunningApplication? = nil,
+        timeout: TimeInterval,
+        then completion: @escaping @MainActor () -> Void
+    ) {
+        let start = Date()
+        let awayPid = awayFrom?.processIdentifier
+        let targetPid = target?.processIdentifier
+        scheduleFrontmostTick(
+            start: start,
+            awayPid: awayPid,
+            targetPid: targetPid,
+            timeout: timeout,
+            completion: completion
+        )
+    }
+
+    private static func scheduleFrontmostTick(
+        start: Date,
+        awayPid: pid_t?,
+        targetPid: pid_t?,
+        timeout: TimeInterval,
+        completion: @escaping @MainActor () -> Void
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { @MainActor in
+            let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            let matched: Bool
+            if let targetPid {
+                matched = (frontPid == targetPid)
+            } else if let awayPid {
+                matched = (frontPid != nil && frontPid != awayPid)
+            } else {
+                matched = (frontPid != nil)
+            }
+            if matched || Date().timeIntervalSince(start) >= timeout {
+                completion()
+                return
+            }
+            scheduleFrontmostTick(
+                start: start,
+                awayPid: awayPid,
+                targetPid: targetPid,
+                timeout: timeout,
+                completion: completion
+            )
         }
     }
 
